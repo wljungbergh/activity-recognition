@@ -1,17 +1,13 @@
+import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import fft
-import os
 
-from utils import (
-    SENSOR_FREQUENCY,
-    parse_logfile,
-    split_into_seconds,
-    visualize_fft,
-    visualize_signals_and_fft,
-)
+from utils import (SENSOR_FREQUENCY, parse_logfile, split_into_seconds,
+                   visualize_fft, visualize_signals_and_fft)
 
 WINDOW_SIZE = 10  # s
 MIN_AMPLITUDE = 250
@@ -41,7 +37,7 @@ def fourier_transform(data: np.ndarray, timestamps: np.ndarray):
 
 def classify_activity(
     fft_data: np.ndarray, freq: np.ndarray, plot: bool = False, fn: str = ""
-):
+) -> Literal['standing still', 'walking', 'running']:
     """Classify the activity based on the fft data.
 
     Returns
@@ -96,6 +92,7 @@ def sliding_window_classification(
     # split the data into seconds
     seconds_ts, seconds_data = split_into_seconds(timestamps, data)
     n_seconds = len(seconds_ts)
+    activities = []
     for i in range(window_size, n_seconds):
         # gather all the signal data
         start = i - window_size
@@ -117,6 +114,8 @@ def sliding_window_classification(
         print(
             f"\t Activity at {str(round(np.mean(timestamps))).zfill(3)} s: {activity}"
         )
+        activities.append(activity)
+    return activities
 
 
 def main(args: Args):
@@ -132,14 +131,28 @@ def main(args: Args):
     # remove the mean of the rms value
     acc_rms -= np.mean(acc_rms)
 
-    # compute the fft of the rms value
-    acc_freq, acc_fft = fourier_transform(acc_rms, acc_timestamps)
-
     print(f"Classifying {log_name}")
     # classify the activity based on a sliding window
-    sliding_window_classification(
-        acc_rms, acc_timestamps, window_size=args.window_size, plot=True, name=log_name
+    activities = sliding_window_classification(
+        acc_rms, acc_timestamps, window_size=args.window_size, plot=args.plot, name=log_name
     )
+
+    if args.plot:
+        # Plot activity classification over time
+        activities = np.array(activities)
+        activities[activities == "standing still"] = 0
+        activities[activities == "walking"] = 1
+        activities[activities == "running"] = 2
+        activities = activities.astype(int)
+        plt.plot(activities)
+        plt.title(f"Activity classification of {log_name}")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Activity")
+        plt.yticks([0, 1, 2], ["still", "walking", "running"])
+        # Add extra space so that yticks are not cut off
+        plt.subplots_adjust(left=0.15)
+        plt.savefig(f"plots/{log_name}_activity_classification.png")
+        plt.show()
 
 
 if __name__ == "__main__":
