@@ -3,9 +3,14 @@ import numpy as np
 from scipy import fft
 import os
 
-from utils import parse_logfile
+from utils import (
+    SENSOR_FREQUENCY,
+    parse_logfile,
+    split_into_seconds,
+    visualize_fft,
+    visualize_signals_and_fft,
+)
 
-SENSOR_FREQUENCY = 100.0  # Hz
 WINDOW_SIZE = 10  # s
 MIN_AMPLITUDE = 250
 
@@ -21,35 +26,6 @@ def fourier_transform(data: np.ndarray, timestamps: np.ndarray):
     fft_data = fft_data[idx]
 
     return freq, np.abs(fft_data)
-
-
-def split_into_seconds(timestamps: np.ndarray, data: np.ndarray):
-    # remove the last samples so that we have samples that are full seconds
-    r = int(len(timestamps) % SENSOR_FREQUENCY)
-    seconds_ts = np.split(timestamps[:-r], len(timestamps) // SENSOR_FREQUENCY)
-    seconds_data = np.split(data[:-r], len(timestamps) // SENSOR_FREQUENCY)
-
-    return np.array(seconds_ts), np.array(seconds_data)
-
-
-def visualize_signals_and_fft(
-    data: np.ndarray,
-    timestamps: np.ndarray,
-    freq: np.ndarray,
-    fft_data: np.ndarray,
-):
-
-    fig, axs = plt.subplots(2, 1, figsize=(10, 10))
-    axs[0].plot(timestamps, data)
-    axs[0].set_title("Accelerometer")
-    axs[0].set_ylabel("Acceleration (m/s^2)")
-    axs[1].plot(freq, np.abs(fft_data))
-    axs[1].set_title("Accelerometer")
-    axs[1].set_ylabel("Amplitude")
-    axs[1].set_xlabel("Frequency (Hz)")
-    # set the xlim to 0.0 Hz to 5 Hz
-    axs[1].set_xlim(0, 5)
-    return fig, axs
 
 
 def classify_activity(
@@ -81,11 +57,7 @@ def classify_activity(
     if plot:
         assert fn != ""
         fig, ax = plt.subplots()
-        ax.plot(freq, np.abs(fft_data))
-        ax.set_title(f"Activity: {activity}")
-        ax.set_ylabel("Amplitude")
-        ax.set_xlabel("Frequency (Hz)")
-        ax.set_xlim(0.0, 5)
+        visualize_fft(ax, freq, fft_data)
         fig.savefig(f"{fn}.png")
         plt.close(fig)
 
@@ -168,16 +140,9 @@ def main():
 
         # compute the fft of the rms value
         acc_freq, acc_fft = fourier_transform(acc_rms, acc_timestamps)
-        # plot the rms value and the fft in each subplot
-        # fig, axs = visualize_signals_and_fft(acc_rms, acc_timestamps, acc_freq, acc_fft)
-        # fig.savefig(f"plots/{os.path.basename(logfile[:-4])}.png")
 
         print(f"Classifying {log_name}")
-        print(f"Settings:")
-        print(f"\t SLIDING_WINDOW_SIZE: {WINDOW_SIZE} s")
-        print(f"\t MIN_AMPLITUDE: {MIN_AMPLITUDE}")
         print(f"Activity for entire activity: {classify_activity(acc_fft, acc_freq)}")
-
         # classify the activity based on a sliding window
         sliding_window_classification(acc_rms, acc_timestamps, plot=True, name=log_name)
 
