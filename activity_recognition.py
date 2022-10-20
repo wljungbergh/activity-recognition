@@ -1,11 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import fft
+import os
 
 from utils import parse_logfile
 
 SENSOR_FREQUENCY = 100.0  # Hz
 WINDOW_SIZE = 10  # s
+MIN_AMPLITUDE = 250
 
 
 def fourier_transform(data: np.ndarray, timestamps: np.ndarray):
@@ -35,136 +37,120 @@ def split_into_seconds(timestamps: np.ndarray, data: np.ndarray):
     return np.array(seconds_ts), np.array(seconds_data)
 
 
-def visualize_signals(
-    acc: np.ndarray,
-    acc_timestamps: np.ndarray,
-    gyr: np.ndarray,
-    gyr_timestamps: np.ndarray,
-    mag: np.ndarray,
-    mag_timestamps: np.ndarray,
+def visualize_signals_and_fft(
+    data: np.ndarray,
+    timestamps: np.ndarray,
+    freq: np.ndarray,
+    fft_data: np.ndarray,
 ):
 
-    # plot acc, gyr, mag in seperate subplots
-    _, axs = plt.subplots(3, 2, figsize=(10, 10))
-    axs[0, 0].plot(acc_timestamps, acc)
-    axs[0, 0].set_title("Accelerometer")
-    axs[0, 0].set_ylabel("Acceleration (m/s^2)")
-    axs[0, 0].legend(["x", "y", "z"])
-    axs[1, 0].plot(gyr_timestamps, gyr)
-    axs[1, 0].set_title("Gyroscope")
-    axs[1, 0].set_ylabel("Angular velocity (rad/s)")
-    axs[1, 0].legend(["x", "y", "z"])
-    axs[2, 0].plot(mag_timestamps, mag)
-    axs[2, 0].set_title("Magnetometer")
-    axs[2, 0].set_ylabel("Magnetic field (uT)")
-    axs[2, 0].legend(["x", "y", "z"])
-    # plot the rms of the acc, gyr, mag in seperate subplots
-    axs[0, 1].plot(acc_timestamps, np.linalg.norm(acc, axis=1))
-    axs[0, 1].set_title("Accelerometer")
-    axs[0, 1].set_ylabel("Acceleration (m/s^2)")
-    axs[1, 1].plot(gyr_timestamps, np.linalg.norm(gyr, axis=1))
-    axs[1, 1].set_title("Gyroscope")
-    axs[1, 1].set_ylabel("Angular velocity (rad/s)")
-    axs[2, 1].plot(mag_timestamps, np.linalg.norm(mag, axis=1))
-    axs[2, 1].set_title("Magnetometer")
-    axs[2, 1].set_ylabel("Magnetic field (uT)")
+    fig, axs = plt.subplots(2, 1, figsize=(10, 10))
+    axs[0].plot(timestamps, data)
+    axs[0].set_title("Accelerometer")
+    axs[0].set_ylabel("Acceleration (m/s^2)")
+    axs[1].plot(freq, np.abs(fft_data))
+    axs[1].set_title("Accelerometer")
+    axs[1].set_ylabel("Amplitude")
+    axs[1].set_xlabel("Frequency (Hz)")
+    # set the xlim to 0.0 Hz to 5 Hz
+    axs[1].set_xlim(0, 5)
+    return fig, axs
 
-    # create a new figure for the fft
-    fig, axs = plt.subplots(3, 2, figsize=(10, 10))
-    # calculate the fft of the acc, gyr, mag
-    acc_freq, acc_fft = fourier_transform(acc, acc_timestamps)
-    gyr_freq, gyr_fft = fourier_transform(gyr, gyr_timestamps)
-    mag_freq, mag_fft = fourier_transform(mag, mag_timestamps)
-    # plot the fft of the acc, gyr, mag in seperate subplots
-    axs[0, 0].plot(acc_freq, np.abs(acc_fft))
-    axs[0, 0].set_title("Accelerometer")
-    axs[0, 0].set_ylabel("Acceleration (m/s^2)")
-    axs[0, 0].legend(["x", "y", "z"])
-    axs[1, 0].plot(gyr_freq, np.abs(gyr_fft))
-    axs[1, 0].set_title("Gyroscope")
-    axs[1, 0].set_ylabel("Angular velocity (rad/s)")
-    axs[1, 0].legend(["x", "y", "z"])
-    axs[2, 0].plot(mag_freq, np.abs(mag_fft))
-    axs[2, 0].set_title("Magnetometer")
-    axs[2, 0].set_ylabel("Magnetic field (uT)")
-    axs[2, 0].legend(["x", "y", "z"])
-    # plot the fft of the rms of the acc, gyr, mag in seperate subplots
 
-    acc_rms = np.linalg.norm(acc, axis=1)
-    acc_rms -= np.mean(acc_rms)
+def classify_activity(fft_data: np.ndarray, freq: np.ndarray):
+    """Classify the activity based on the fft data.
 
-    axs[0, 1].plot(
-        acc_freq,
-        np.abs(fourier_transform(acc_rms, acc_timestamps)[1]),
-    )
-    axs[0, 1].set_title("Accelerometer")
-    axs[0, 1].set_ylabel("Acceleration (m/s^2)")
-    axs[1, 1].plot(
-        gyr_freq,
-        np.abs(fourier_transform(np.linalg.norm(gyr, axis=1), gyr_timestamps)[1]),
-    )
-    axs[1, 1].set_title("Gyroscope")
-    axs[1, 1].set_ylabel("Angular velocity (rad/s)")
-    axs[2, 1].plot(
-        mag_freq,
-        np.abs(fourier_transform(np.linalg.norm(mag, axis=1), mag_timestamps)[1]),
-    )
-    axs[2, 1].set_title("Magnetometer")
-    axs[2, 1].set_ylabel("Magnetic field (uT)")
+    Returns
+        str, the activity (standing still, walking, running)
+    """
 
-    plt.show()
+    if np.max(fft_data) < MIN_AMPLITUDE:
+        return "standing still"
+
+    # get the peaks
+    peaks = fft_data[np.where(freq > 0.5)]
+    # get the peak with the highest amplitude
+    peak = np.max(peaks)
+    # get the frequency of the peak
+    peak_freq = freq[np.where(fft_data == peak)]
+    # classify the activity based on the frequency
+    if peak_freq < 2.0:
+        return "walking"
+    else:
+        return "running"
+
+
+def sliding_window_classification(
+    data: np.ndarray, timestamps: np.ndarray, window_size: int = WINDOW_SIZE
+):
+    """Classify the activity based on a sliding window of the data.
+
+    Args:
+        data: the data to classify
+        timestamps: the timestamps of the data
+        window_size: the window size in seconds
+
+    Returns:
+        list, the activities
+    """
+
+    # split the data into seconds
+    seconds_ts, seconds_data = split_into_seconds(timestamps, data)
+    n_seconds = len(seconds_ts)
+    for i in range(WINDOW_SIZE, n_seconds):
+        # gather all the signal data
+        start = i - WINDOW_SIZE
+        timestamps = np.concatenate(seconds_ts[start : start + WINDOW_SIZE])
+        data = np.concatenate(seconds_data[start : start + WINDOW_SIZE])
+        # compute the fourier transform of the accelerometer data
+        acc_freq, acc_fft = fourier_transform(data, timestamps)
+
+        # classify the activity
+        activity = classify_activity(acc_fft, acc_freq)
+        print(f"\t Activity at {round(np.mean(timestamps))} s: {activity}")
 
 
 def main():
     logfile_standing_still = "logs/sensorLog_20221020T074111.txt"
-    logfile2_walk_in_hand = "logs/sensorLog_20221020T074200.txt"
-    logfile3_walk_in_pocket = "logs/sensorLog_20221020T074253.txt"
-    logfile4_run_in_hand = "logs/sensorLog_20221020T074342.txt"
-    logfile5_run_in_pocket = "logs/sensorLog_20221020T074415.txt"
+    logfile_walk_in_hand = "logs/sensorLog_20221020T074200.txt"
+    logfile_walk_in_pocket = "logs/sensorLog_20221020T074253.txt"
+    logfile_run_in_hand = "logs/sensorLog_20221020T074342.txt"
+    logfile_run_in_pocket = "logs/sensorLog_20221020T074415.txt"
 
-    acc, acc_timestamps, gyr, gyr_timestamps, mag, mag_timestamps = parse_logfile(
-        logfile_standing_still
-    )
+    logfiles = [
+        logfile_standing_still,
+        logfile_walk_in_hand,
+        logfile_walk_in_pocket,
+        logfile_run_in_hand,
+        logfile_run_in_pocket,
+    ]
+    log_names = [
+        "Standing still",
+        "Walking in hand",
+        "Walking in pocket",
+        "Running in hand",
+        "Running in pocket",
+    ]
 
-    visualize_signals(acc, acc_timestamps, gyr, gyr_timestamps, mag, mag_timestamps)
-    # # compute the rms of all signals
-    # acc_rms = np.linalg.norm(acc, axis=1)
-    # gyr_rms = np.linalg.norm(gyr, axis=1)
-    # mag_rms = np.linalg.norm(mag, axis=1)
+    for log_name, logfile in zip(log_names, logfiles):
+        acc, acc_timestamps, _, _, _, _ = parse_logfile(logfile)
 
-    # acc_freq, acc_fft = fourier_transform(acc, acc_timestamps)
-    # # remove all negative frequencies
-    # valid_acc_freq, valid_acc_fft = (
-    #     acc_freq[: (len(acc_freq) // 2) + 1],
-    #     acc_fft[: (len(acc_freq) // 2) + 1 :],
-    # )
-    # split into seconds
-    exit()
-    acc_timestamps_seconds, acc_seconds = split_into_seconds(acc_timestamps, acc)
-    n_seconds = acc_seconds.shape[0]
-    for i in range(WINDOW_SIZE, n_seconds):
-        # gather all the signal data
-        start = i - WINDOW_SIZE
-        timestamps_ = np.concatenate(
-            acc_timestamps_seconds[start : start + WINDOW_SIZE]
-        )
-        acc_ = np.concatenate(acc_seconds[start : start + WINDOW_SIZE])
-        # get the rms
-        acc_rms = np.linalg.norm(acc_, axis=1)
-        # compute the fourier transform of the accelerometer data
-        acc_freq, acc_fft = fourier_transform(acc_rms, timestamps_)
-        # get the peaks
+        # compute the rms value of the accelerometer
+        acc_rms = np.linalg.norm(acc, axis=1)
+        # remove the mean of the rms value
+        acc_rms -= np.mean(acc_rms)
 
-        # create a plot of the rms over time
-        fig, axes = plt.subplots(2, 1, figsize=(10, 3))
-        axes[0].plot(acc_freq, acc_fft)
-        axes[0].set_ylabel("Amplitude")
-        axes[0].set_xlabel("Frequency (Hz)")
-        axes[1].plot(timestamps_, acc_rms)
-        axes[1].set_ylabel("RMS acceleration (m/s^2)")
-        axes[1].set_xlabel("Time (s)")
-        # show the plot in each iteration
-        plt.show()
+        # compute the fft of the rms value
+        acc_freq, acc_fft = fourier_transform(acc_rms, acc_timestamps)
+        # plot the rms value and the fft in each subplot
+        # fig, axs = visualize_signals_and_fft(acc_rms, acc_timestamps, acc_freq, acc_fft)
+        # fig.savefig(f"plots/{os.path.basename(logfile[:-4])}.png")
+
+        print(f"Classifying {log_name}")
+        print(f"Activity for entire activity: {classify_activity(acc_fft, acc_freq)}")
+
+        # classify the activity based on a sliding window
+        sliding_window_classification(acc_rms, acc_timestamps)
 
 
 if __name__ == "__main__":
