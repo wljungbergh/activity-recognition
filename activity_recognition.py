@@ -136,7 +136,6 @@ def main(args: Args):
     acc_freq, acc_fft = fourier_transform(acc_rms, acc_timestamps)
 
     print(f"Classifying {log_name}")
-    print(f"Activity for entire activity: {classify_activity(acc_fft, acc_freq)}")
     # classify the activity based on a sliding window
     sliding_window_classification(
         acc_rms, acc_timestamps, window_size=args.window_size, plot=True, name=log_name
