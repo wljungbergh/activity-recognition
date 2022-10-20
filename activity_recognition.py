@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import fft
@@ -13,6 +15,15 @@ from utils import (
 
 WINDOW_SIZE = 10  # s
 MIN_AMPLITUDE = 250
+
+
+@dataclass
+class Args:
+    logfile: str
+    logname: Optional[str] = None
+    window_size: int = WINDOW_SIZE
+    min_amplitude: int = MIN_AMPLITUDE
+    plot: bool = False
 
 
 def fourier_transform(data: np.ndarray, timestamps: np.ndarray):
@@ -85,11 +96,11 @@ def sliding_window_classification(
     # split the data into seconds
     seconds_ts, seconds_data = split_into_seconds(timestamps, data)
     n_seconds = len(seconds_ts)
-    for i in range(WINDOW_SIZE, n_seconds):
+    for i in range(window_size, n_seconds):
         # gather all the signal data
-        start = i - WINDOW_SIZE
-        timestamps = np.concatenate(seconds_ts[start : start + WINDOW_SIZE])
-        data = np.concatenate(seconds_data[start : start + WINDOW_SIZE])
+        start = i - window_size
+        timestamps = np.concatenate(seconds_ts[start : start + window_size])
+        data = np.concatenate(seconds_data[start : start + window_size])
         # compute the fourier transform of the accelerometer data
         acc_freq, acc_fft = fourier_transform(data, timestamps)
 
@@ -108,7 +119,31 @@ def sliding_window_classification(
         )
 
 
-def main():
+def main(args: Args):
+    if args.plot:
+        os.makedirs("plots", exist_ok=True)
+    if args.logname is None:
+        args.logname = os.path.basename(args.logfile).split(".")[0]
+
+    acc, acc_timestamps, _, _, _, _ = parse_logfile(logfile)
+
+    # compute the rms value of the accelerometer
+    acc_rms = np.linalg.norm(acc, axis=1)
+    # remove the mean of the rms value
+    acc_rms -= np.mean(acc_rms)
+
+    # compute the fft of the rms value
+    acc_freq, acc_fft = fourier_transform(acc_rms, acc_timestamps)
+
+    print(f"Classifying {log_name}")
+    print(f"Activity for entire activity: {classify_activity(acc_fft, acc_freq)}")
+    # classify the activity based on a sliding window
+    sliding_window_classification(
+        acc_rms, acc_timestamps, window_size=args.window_size, plot=True, name=log_name
+    )
+
+
+if __name__ == "__main__":
     logfile_standing_still = "logs/sensorLog_20221020T074111.txt"
     logfile_walk_in_hand = "logs/sensorLog_20221020T074200.txt"
     logfile_walk_in_pocket = "logs/sensorLog_20221020T074253.txt"
@@ -131,21 +166,5 @@ def main():
     ]
 
     for log_name, logfile in zip(log_names, logfiles):
-        acc, acc_timestamps, _, _, _, _ = parse_logfile(logfile)
-
-        # compute the rms value of the accelerometer
-        acc_rms = np.linalg.norm(acc, axis=1)
-        # remove the mean of the rms value
-        acc_rms -= np.mean(acc_rms)
-
-        # compute the fft of the rms value
-        acc_freq, acc_fft = fourier_transform(acc_rms, acc_timestamps)
-
-        print(f"Classifying {log_name}")
-        print(f"Activity for entire activity: {classify_activity(acc_fft, acc_freq)}")
-        # classify the activity based on a sliding window
-        sliding_window_classification(acc_rms, acc_timestamps, plot=True, name=log_name)
-
-
-if __name__ == "__main__":
-    main()
+        args = Args(logfile, logname=log_name, plot=True)
+        main(args)
