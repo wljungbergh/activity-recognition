@@ -6,7 +6,7 @@ import os
 from utils import parse_logfile
 
 SENSOR_FREQUENCY = 100.0  # Hz
-WINDOW_SIZE = 10  # s
+WINDOW_SIZE = 20  # s
 MIN_AMPLITUDE = 250
 
 
@@ -74,7 +74,7 @@ def classify_activity(fft_data: np.ndarray, freq: np.ndarray):
     # get the frequency of the peak
     peak_freq = freq[np.where(fft_data == peak)]
     # classify the activity based on the frequency
-    if peak_freq < 2.0:
+    if peak_freq < 2.2:
         return "walking"
     else:
         return "running"
@@ -107,7 +107,9 @@ def sliding_window_classification(
 
         # classify the activity
         activity = classify_activity(acc_fft, acc_freq)
-        print(f"\t Activity at {round(np.mean(timestamps))} s: {activity}")
+        print(
+            f"\t Activity at {str(round(np.mean(timestamps))).zfill(3)} s: {activity}"
+        )
 
 
 def main():
