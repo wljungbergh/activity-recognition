@@ -6,7 +6,7 @@ import os
 from utils import parse_logfile
 
 SENSOR_FREQUENCY = 100.0  # Hz
-WINDOW_SIZE = 20  # s
+WINDOW_SIZE = 10  # s
 MIN_AMPLITUDE = 250
 
 
@@ -20,12 +20,7 @@ def fourier_transform(data: np.ndarray, timestamps: np.ndarray):
     freq = freq[idx]
     fft_data = fft_data[idx]
 
-    # remove all frequences below 0.05 Hz
-    # idx = np.where(freq > 0.05)
-    # freq = freq[idx]
-    # fft_data = fft_data[idx]
-
-    return freq, fft_data
+    return freq, np.abs(fft_data)
 
 
 def split_into_seconds(timestamps: np.ndarray, data: np.ndarray):
@@ -57,7 +52,9 @@ def visualize_signals_and_fft(
     return fig, axs
 
 
-def classify_activity(fft_data: np.ndarray, freq: np.ndarray):
+def classify_activity(
+    fft_data: np.ndarray, freq: np.ndarray, plot: bool = False, fn: str = ""
+):
     """Classify the activity based on the fft data.
 
     Returns
@@ -65,23 +62,42 @@ def classify_activity(fft_data: np.ndarray, freq: np.ndarray):
     """
 
     if np.max(fft_data) < MIN_AMPLITUDE:
-        return "standing still"
-
-    # get the peaks
-    peaks = fft_data[np.where(freq > 0.5)]
-    # get the peak with the highest amplitude
-    peak = np.max(peaks)
-    # get the frequency of the peak
-    peak_freq = freq[np.where(fft_data == peak)]
-    # classify the activity based on the frequency
-    if peak_freq < 2.2:
-        return "walking"
+        activity = "standing still"
     else:
-        return "running"
+        # remove all negative frequencies
+        fft_data = fft_data[freq > 0.0]
+        freq = freq[freq > 0.0]
+
+        # get the peak with the highest amplitude
+        peak_idx = np.argmax(fft_data)
+        # get the frequency of the peak
+        peak_freq = freq[peak_idx]
+        # classify the activity based on the frequency
+        if peak_freq < 2.4:
+            activity = "walking"
+        else:
+            activity = "running"
+
+    if plot:
+        assert fn != ""
+        fig, ax = plt.subplots()
+        ax.plot(freq, np.abs(fft_data))
+        ax.set_title(f"Activity: {activity}")
+        ax.set_ylabel("Amplitude")
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_xlim(0.0, 5)
+        fig.savefig(f"{fn}.png")
+        plt.close(fig)
+
+    return activity
 
 
 def sliding_window_classification(
-    data: np.ndarray, timestamps: np.ndarray, window_size: int = WINDOW_SIZE
+    data: np.ndarray,
+    timestamps: np.ndarray,
+    window_size: int = WINDOW_SIZE,
+    plot: bool = False,
+    name: str = "",
 ):
     """Classify the activity based on a sliding window of the data.
 
@@ -105,8 +121,16 @@ def sliding_window_classification(
         # compute the fourier transform of the accelerometer data
         acc_freq, acc_fft = fourier_transform(data, timestamps)
 
+        if plot:
+            assert name != ""
+
         # classify the activity
-        activity = classify_activity(acc_fft, acc_freq)
+        activity = classify_activity(
+            acc_fft,
+            acc_freq,
+            plot=plot,
+            fn=f"plots/{name}_step_{str(round(np.mean(timestamps))).zfill(3)}",
+        )
         print(
             f"\t Activity at {str(round(np.mean(timestamps))).zfill(3)} s: {activity}"
         )
@@ -149,10 +173,13 @@ def main():
         # fig.savefig(f"plots/{os.path.basename(logfile[:-4])}.png")
 
         print(f"Classifying {log_name}")
+        print(f"Settings:")
+        print(f"\t SLIDING_WINDOW_SIZE: {WINDOW_SIZE} s")
+        print(f"\t MIN_AMPLITUDE: {MIN_AMPLITUDE}")
         print(f"Activity for entire activity: {classify_activity(acc_fft, acc_freq)}")
 
         # classify the activity based on a sliding window
-        sliding_window_classification(acc_rms, acc_timestamps)
+        sliding_window_classification(acc_rms, acc_timestamps, plot=True, name=log_name)
 
 
 if __name__ == "__main__":
