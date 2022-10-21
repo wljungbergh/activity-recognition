@@ -8,6 +8,7 @@ from scipy import fft
 
 from utils import (
     SENSOR_FREQUENCY,
+    export_mp4,
     parse_logfile,
     split_into_seconds,
     visualize_fft,
@@ -26,6 +27,7 @@ class Args:
     window_size: int = WINDOW_SIZE
     min_amplitude: int = MIN_AMPLITUDE
     plot: bool = False
+    export_mp4: bool = False
 
 
 def fourier_transform(data: np.ndarray, timestamps: np.ndarray):
@@ -169,6 +171,9 @@ def main(args: Args):
         plt.savefig(f"plots/{args.logname}_activity_classification.png")
         plt.show()
 
+    if args.export_mp4:
+        export_mp4(activities, "movie.mp4")
+
 
 if __name__ == "__main__":
     logfile_standing_still = "logs/sensorLog_20221020T074111.txt"
@@ -196,5 +201,5 @@ if __name__ == "__main__":
     #     args = Args(logfile, logname=log_name, plot=True)
     #     main(args)
 
-    args = Args("logs/test-log.txt", logname="Test", plot=True)
+    args = Args("logs/test-log.txt", logname="Test", plot=True, export_mp4=True)
     main(args)

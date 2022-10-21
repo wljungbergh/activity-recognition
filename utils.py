@@ -91,3 +91,23 @@ def visualize_signals_and_fft(
     visualize_fft(axs[1], freq, fft_data)
 
     return fig, axs
+
+
+def export_mp4(activites, output_path):
+
+    activities = np.array(activities)
+    activities[activities == "standing still"] = 0
+    activities[activities == "walking"] = 1
+    activities[activities == "running"] = 2
+    activities = activities.astype(int)
+    plt.plot(activities)
+    plt.title(f"Activity classification of {args.logname}")
+    plt.xlabel("Time [s]")
+    plt.ylabel("Activity")
+    plt.yticks([0, 1, 2], ["still", "walking", "running"])
+    # Add extra space so that yticks are not cut off
+    plt.subplots_adjust(left=0.15)
+    plt.savefig(f"plots/{output_path}_.p")
+    plt.show()
+
+    pass
